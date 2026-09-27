@@ -4297,6 +4297,18 @@ st.caption(
 
 defaults = st.session_state.defaults
 clear_pending_parameter_widgets()
+pending_conversion = st.session_state.pop("pending_controller_conversion", None)
+if pending_conversion is not None:
+    # Widgetwerte vor dem Rendern setzen: Ein bloßes Update von ``defaults``
+    # wird von bereits vorhandenen Streamlit-Widgetzuständen überlagert.
+    defaults.update(pending_conversion)
+    st.session_state.controller_type = (
+        "PID" if pending_conversion["kd"] > 0
+        else "PI" if pending_conversion["ki"] > 0 else "P"
+    )
+    st.session_state["sim_controller_type"] = st.session_state.controller_type
+    for parameter in ("kp", "ki", "kd"):
+        st.session_state[f"sim_{parameter}"] = float(pending_conversion[parameter])
 
 with st.sidebar:
 
@@ -4308,7 +4320,8 @@ with st.sidebar:
         controller_type = st.selectbox(
             "Reglertyp",
             ["P", "PI", "PID"],
-            index=["P", "PI", "PID"].index(st.session_state.controller_type),
+            index=(None if "sim_controller_type" in st.session_state else
+                   ["P", "PI", "PID"].index(st.session_state.controller_type)),
             key="sim_controller_type",
         )
 
@@ -4334,7 +4347,7 @@ with st.sidebar:
             "Kp - Proportionalverstärkung",
             min_value=0.0,
             max_value=100.0,
-            value=float(defaults["kp"]),
+            value=None if "sim_kp" in st.session_state else float(defaults["kp"]),
             step=0.1,
             key="sim_kp",
             help="Kp bestimmt, wie stark der Regler direkt auf die aktuelle Regelabweichung reagiert."
@@ -4345,7 +4358,7 @@ with st.sidebar:
                 "Ki - Integralverstärkung",
                 min_value=0.0,
                 max_value=100.0,
-                value=float(defaults["ki"]),
+                value=None if "sim_ki" in st.session_state else float(defaults["ki"]),
                 step=0.001,
                 format="%.6f",
                 key="sim_ki",
@@ -4360,7 +4373,7 @@ with st.sidebar:
                 "Kd - Differentialverstärkung",
                 min_value=0.0,
                 max_value=100.0,
-                value=float(defaults["kd"]),
+                value=None if "sim_kd" in st.session_state else float(defaults["kd"]),
                 step=0.1,
                 key="sim_kd",
                 help="Kd reagiert auf schnelle Änderungen der Regelabweichung und kann Überschwingen dämpfen."
@@ -4781,10 +4794,7 @@ if "converter_result" in st.session_state:
         )
         st.caption(f"Tv = {converted['kd'] / converted['kp']:.6g} s")
     if st.button("Umrechnung in Simulation übernehmen", key="converter_apply"):
-        st.session_state.defaults.update(converted)
-        st.session_state.controller_type = (
-            "PID" if converted["kd"] > 0 else "PI" if converted["ki"] > 0 else "P"
-        )
+        st.session_state.pending_controller_conversion = converted.copy()
         st.session_state.clear_parameter_widgets_pending = True
         st.session_state.pop("converter_result", None)
         st.rerun()
