@@ -105,7 +105,7 @@ PRACTICAL_PROCESS_CATALOG = {
     },
     "Dampf": {
         "Dampfdruck": _praxis_variant("Druckregelung", "Dampfdruck [bar]", "Dampferzeuger", "Kessel- und Dampfvolumen", "Dampfentnahme", ["modulierender Brenner", "Elektroheizung", "Druckregelventil"], _TEMP, "träge"),
-        "Dampftemperatur": _praxis_variant("Temperaturregelung", "Dampftemperatur [°C]", "Überhitzer / Einspritzung", "Rohr- und Metallmasse", "Dampfmenge", ["Einspritzventil", "Brennerleistung"], _TEMP, "träge"),
+        "Dampftemperatur": _praxis_variant("Generische Prozessstrecke", "Dampftemperatur [°C]", "Überhitzer / Einspritzung", "Rohr- und Metallmasse", "Dampfmenge", ["Einspritzventil", "Brennerleistung"], _TEMP, "träge"),
         "Kesselwasserstand": _praxis_variant("Füllstandsregelung", "Kesselwasserstand", "Speisewasser / Trommel", "Trommelvolumen", "Dampfentnahme", ["Speisewasserventil", "Speisewasserpumpe mit FU"], ["Automatische Empfehlung", "PI", "Kaskade", "Dreipunktregelung"], "mittel"),
         "Kondensatstand": _praxis_variant("Füllstandsregelung", "Kondensatstand", "Kondensatbehälter", "Behältervolumen", "Kondensatanfall", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt"], "träge"),
     },
@@ -906,6 +906,29 @@ def default_builder_config():
         "setpoint_name": "Sollwert w(t)",
         "output_name": "Regelgröße y(t)",
     }
+
+
+def convert_controller_parameters(form, proportional, integral, derivative, time_unit="s"):
+    """Wandelt gebräuchliche Reglerangaben in die parallele Simulationsform um."""
+    scale = 60.0 if time_unit == "min" else 1.0
+    if form == "Parallel: Kp, Ki, Kd":
+        kp, ki, kd = proportional, integral, derivative
+    else:
+        if form == "Proportionalband: Xp, Tn, Tv":
+            if proportional <= 0:
+                raise ValueError("Das Proportionalband Xp muss größer als null sein.")
+            kp = 100.0 / proportional
+        else:
+            kp = proportional
+        tn = integral * scale
+        tv = derivative * scale
+        ki = kp / tn if tn > 0 else 0.0
+        kd = kp * tv
+    if not all(np.isfinite(value) and value >= 0 for value in (kp, ki, kd)):
+        raise ValueError("Alle Reglerwerte müssen endlich und nicht negativ sein.")
+    if kp > 100 or ki > 100 or kd > 100:
+        raise ValueError("Das Ergebnis überschreitet den Eingabebereich der Simulation (maximal 100 je Parameter).")
+    return {"kp": kp, "ki": ki, "kd": kd}
 
 
 SHARED_PARAMETER_KEYS = (
@@ -2537,6 +2560,26 @@ def validate_wirkplan_config(config: dict):
         errors.append("Die maximale Stellgröße muss größer als die minimale Stellgröße sein.")
     if float(config.get("messbereich_min", 0.0)) >= float(config.get("messbereich_max", 100.0)):
         errors.append("Das Messbereichsmaximum muss größer als das Messbereichsminimum sein.")
+    if config.get("reale_daten_aktiv", True):
+        process = config.get("prozessart")
+        if process == "Temperaturregelung":
+            ambient = float(config.get("temp_umgebung_c", 0.0))
+            target = float(config.get("temp_soll_c", 0.0))
+            mode = config.get("temp_betriebsart", "Heizen")
+            if (mode == "Heizen" and target <= ambient) or (mode == "Kühlen" and target >= ambient):
+                errors.append("Betriebsart und Solltemperatur passen nicht zur Umgebungstemperatur.")
+        elif process == "Füllstandsregelung":
+            if float(config.get("tank_soll_m", 0.0)) > float(config.get("tank_hoehe_m", 0.0)):
+                errors.append("Der Sollfüllstand liegt über der maximalen Behälterhöhe.")
+        elif process == "Druckregelung":
+            if float(config.get("druck_soll_bar", 0.0)) > float(config.get("druck_max_bar", 0.0)):
+                errors.append("Der Solldruck liegt über dem Maximaldruck.")
+        elif process == "Durchflussregelung":
+            if float(config.get("flow_soll_m3h", 0.0)) > float(config.get("flow_max_m3h", 0.0)):
+                errors.append("Der Solldurchfluss liegt über dem maximalen Durchfluss.")
+        elif process == "Position / Mechanik":
+            if float(config.get("pos_soll_mm", 0.0)) > float(config.get("pos_hub_mm", 0.0)):
+                errors.append("Die Sollposition liegt außerhalb des maximalen Hubs.")
     if config.get("auslegung") == "Manuell":
         if float(config.get("man_dt", 0.01)) >= float(config.get("man_t_end", 25.0)):
             errors.append("Der Zeitschritt dt muss kleiner als die Simulationsdauer sein.")
@@ -2600,10 +2643,18 @@ def calculate_real_process_data(config: dict):
                 f"{'Heiz' if betriebsart == 'Heizen' else 'Kühl'}leistung und dem "
                 "Wärmeübergang im stationären Zustand nicht erreichbar."
             )
-        if medium == "Luft":
+        if medium == "Luft" and (
+            config.get("anlagenart") == "Raumautomation"
+            or "Raum" in config.get("regelungsvariante", "")
+        ):
             result["warnings"].append(
                 "Bei Räumen speichert nicht nur die Luft Wärme. Für ein genaueres Modell "
                 "müssen Wände, Einrichtung und Gebäudemasse als äquivalente Masse ergänzt werden."
+            )
+        elif medium == "Luft":
+            result["warnings"].append(
+                "Das Luftvolumen ist nur eine vereinfachte Speichermasse. "
+                "Registermasse und Luftdurchsatz gehen nicht in dieses PT1-Modell ein."
             )
 
         result.update({
@@ -2837,13 +2888,20 @@ def calculate_real_process_data(config: dict):
         omega0 = np.sqrt(feder / masse)
         zeta = daempfung / (2.0 * np.sqrt(feder * masse))
         ts_equiv = 1.0 / max(omega0, 0.001)
+        static_full_stroke_mm = 1000.0 * kraft / feder
+        if soll > min(hub, static_full_stroke_mm):
+            result["warnings"].append(
+                "Die gewünschte Position ist bei der gewählten Federsteifigkeit und Stellkraft "
+                "im statischen Gleichgewicht nicht erreichbar."
+            )
         result.update({
-            "plant_type": "PT2", "ks": hub / 100.0, "ts": ts_equiv,
+            "plant_type": "PT2", "ks": static_full_stroke_mm / 100.0, "ts": ts_equiv,
             "zeta": _clamp(zeta, 0.05, 3.0), "omega0": omega0,
             "setpoint": soll, "t_end": max(10.0, 10.0 / max(omega0, 0.001)),
             "disturbance_value": -max(0.1, 0.05 * soll),
             "input_unit": "% Stellkraft", "output_unit": "mm",
-            "model_note": "Masse, Feder und Dämpfung bilden ein physikalisches PT2-Modell.",
+            "model_note": "Masse, Feder, Dämpfung und Stellkraft bilden ein PT2-Ersatzmodell. "
+                          "Der Hub wird als Plausibilitätsgrenze geprüft, aber nicht als harter Anschlag simuliert.",
         })
         result["metrics"] = [
             ("Masse", f"{masse:.2f} kg"), ("Stellkraft", f"{kraft:.1f} N"),
@@ -2854,7 +2912,7 @@ def calculate_real_process_data(config: dict):
             "stellgroesse": f"Stellkraft {kraft:.0f} N", "prozessglied": "Antrieb / Mechanik",
             "speicher": f"m={masse:.1f} kg, k={feder:.0f} N/m", "regelgroesse": f"Soll {soll:.1f} mm",
         }
-        result["begruendung"].append("Masse, Federsteifigkeit und Dämpfung bestimmen Eigenfrequenz und Dämpfungsgrad des PT2-Modells.")
+        result["begruendung"].append("Masse, Federsteifigkeit und Dämpfung bestimmen Eigenfrequenz und Dämpfung; Stellkraft und Federsteifigkeit bestimmen die statische Streckenverstärkung.")
 
     elif prozessart == "Generische Prozessstrecke":
         plant_type = config.get("generic_plant_type", "PT1")
@@ -2872,7 +2930,8 @@ def calculate_real_process_data(config: dict):
             "input_unit": "% Stellgröße", "output_unit": unit,
             "model_note": (
                 "Diese praxisnahe Variante nutzt eine frei parametrierbare Ersatzstrecke. "
-                "Ks, Ts und bei PT2 zusätzlich ζ und ω0 können an Messdaten angepasst werden."
+                "Ks, Ts und bei PT2 zusätzlich ζ und ω0 können an Messdaten angepasst werden. "
+                "Die Praxisbezeichnung allein erzeugt kein eigenes physikalisches Anlagenmodell."
             ),
         })
         result["metrics"] = [
@@ -3428,6 +3487,8 @@ def apply_practical_variant_defaults(config: dict):
         "stoerungen_relevant": profile["disturbances"],
         "auslegung": "Automatisch",
         "reale_daten_aktiv": True,
+        "stellgroesse_min": 0.0,
+        "stellgroesse_max": 100.0,
     })
 
     controlled = profile["controlled"]
@@ -3437,11 +3498,15 @@ def apply_practical_variant_defaults(config: dict):
     # bewusst plausible Startpunkte und bleiben in der Oberfläche editierbar.
     if model == "Temperaturregelung":
         if category in {"RLT / Lüftung", "Raumautomation"}:
+            is_room = category == "Raumautomation" or "Raum" in variant_name
+            is_cooling = "Kühl" in variant_name
             config.update({
-                "temp_betriebsart": "Kühlen" if "Kühl" in variant_name else "Heizen",
-                "temp_medium": "Luft", "temp_volumen_m3": 300.0,
-                "temp_heizleistung_kw": 20.0, "temp_umgebung_c": 5.0,
-                "temp_soll_c": 21.0, "temp_waermeverlust_w_k": 600.0,
+                "temp_betriebsart": "Kühlen" if is_cooling else "Heizen",
+                "temp_medium": "Luft", "temp_volumen_m3": 300.0 if is_room else 3.0,
+                "temp_heizleistung_kw": 20.0,
+                "temp_umgebung_c": 30.0 if is_cooling else 5.0,
+                "temp_soll_c": 23.0 if is_cooling else 21.0,
+                "temp_waermeverlust_w_k": 600.0,
                 "temp_wirkungsgrad": 0.9,
             })
         elif category == "Kälte":
@@ -3451,13 +3516,13 @@ def apply_practical_variant_defaults(config: dict):
                 "temp_umgebung_c": 12.0, "temp_soll_c": 6.0,
                 "temp_waermeverlust_w_k": 900.0, "temp_wirkungsgrad": 0.85,
             })
-        elif category in {"Dampf", "Prozesswärme"}:
+        elif category == "Prozesswärme":
             config.update({
                 "temp_betriebsart": "Heizen", "temp_medium": "Benutzerdefiniert",
                 "temp_volumen_m3": 2.0, "temp_heizleistung_kw": 150.0,
                 "temp_umgebung_c": 20.0, "temp_soll_c": 180.0,
                 "temp_waermeverlust_w_k": 750.0, "temp_wirkungsgrad": 0.88,
-                "temp_dichte_kg_m3": 780.0, "temp_cp_kj_kgk": 0.6,
+                "temp_dichte_kg_m3": 780.0, "temp_cp_kj_kgk": 2.0,
             })
         else:
             config.update({
@@ -3534,8 +3599,9 @@ def apply_practical_variant_defaults(config: dict):
             "Konzentration": (50.0, "%", 300.0),
             "Ladezustand": (80.0, "%", 3600.0),
             "Leistung": (100.0, "kW", 300.0),
-            "Netzleistung": (0.0, "kW", 300.0),
+            "Netzleistung": (50.0, "kW", 300.0),
             "Taupunkt": (-20.0, "°C", 600.0),
+            "Dampftemperatur": (180.0, "°C", 300.0),
             "Differenzdruck": (250.0, "Pa", 60.0),
             "Drehmoment": (50.0, "Nm", 30.0),
             "Kraft": (1000.0, "N", 30.0),
@@ -3553,6 +3619,9 @@ def apply_practical_variant_defaults(config: dict):
             "generic_unit": unit,
             "generic_t_end": t_end,
             "generic_ts": max(t_end / 6.0, 0.1),
+            "generic_ks": max(abs(setpoint) / 50.0, 0.001),
+            "stellgroesse_min": -100.0 if setpoint < 0 else 0.0,
+            "stellgroesse_max": 100.0,
         })
 
     widget_values = {
@@ -3759,7 +3828,8 @@ def render_real_process_inputs(config: dict):
             number("flow_rohrlaenge_m", "Rohrlänge [m]", 0.0, 1.0)
             number("flow_durchmesser_mm", "Rohr-Innendurchmesser [mm]", 1.0, 5.0)
         if tiefe == "Experte":
-            number("flow_druckverlust_bar", "Druckverlust bei Nennfluss [bar]", 0.0, 0.1)
+            number("flow_druckverlust_bar", "Druckverlust bei Nennfluss [bar] (Kennwert)", 0.0, 0.1)
+            st.caption("Der Druckverlust wird angezeigt, ändert aber ohne Pumpenkennlinie nicht die simulierte Strecke.")
 
     elif prozessart == "Position / Mechanik":
         number("pos_masse_kg", "bewegte Masse [kg]", 0.001, 1.0)
@@ -3916,6 +3986,11 @@ def render_wirkplan_builder():
             f"Grundmodell: **{config['prozessart']}** · "
             f"{len(variant_names)} Varianten in diesem Gewerk"
         )
+        st.caption(
+            "Das Stellglied besitzt noch keine eigene Kennlinie. Die Praxisstrategie wählt "
+            "einen P-, PI- oder PID-Ersatzregler; Sonderfunktionen wie Kaskaden werden "
+            "nicht als zusätzliche Regelkreise berechnet."
+        )
 
         def config_text_input(label, field, widget_key):
             if widget_key not in st.session_state:
@@ -3935,6 +4010,7 @@ def render_wirkplan_builder():
             )
 
         with st.expander("1. Physikalische Wirkungskette", expanded=True):
+            st.caption("Die Bezeichnungen beschreiben den Wirkplan. Die Simulationszahlen folgen aus den Anlagendaten und der Auslegung.")
             config_text_input("Stellgröße", "stellgroesse", "wirkplan_stellgroesse")
             config_text_input("Prozessglied", "prozessglied", "wirkplan_prozessglied")
             config_text_input("Speicher / Trägheit", "speicher", "wirkplan_speicher")
@@ -3948,6 +4024,7 @@ def render_wirkplan_builder():
             config = render_real_process_inputs(config)
 
         with st.expander("3. Verhalten des Prozesses", expanded=False):
+            st.caption("Totzeit und maximale Stellrate werden dokumentiert, im aktuellen PT1/PT2-Simulator aber nicht nachgebildet. Die Stellgrenzen wirken in der Simulation.")
             config["traegheit"] = st.selectbox(
                 "Wie träge ist der Prozess?",
                 ["schnell", "mittel", "träge", "sehr träge"],
@@ -3990,6 +4067,7 @@ def render_wirkplan_builder():
             )
 
         with st.expander("4. Messkette", expanded=False):
+            st.caption("Messbereich, Sensorträgheit und Rauschen sind Angaben für den Wirkplan. Der Simulator verwendet derzeit eine ideale Rückführung ohne diese Effekte.")
             mess_left, mess_right = st.columns(2)
             with mess_left:
                 config["messbereich_min"] = st.number_input(
@@ -4647,4 +4725,67 @@ with st.expander("Technische Einordnung"):
         {disturbance_position}
         """
     )
+
+
+st.divider()
+st.subheader("Reglerparameter umrechnen")
+st.caption(
+    "Die Simulation rechnet mit u = Kp·e + Ki·∫e dt + Kd·de/dt. "
+    "Hier kannst du alternative Reglerangaben umrechnen und anschließend übernehmen."
+)
+converter_form = st.selectbox(
+    "Vorliegende Parameterform",
+    ["Parallel: Kp, Ki, Kd", "Ideal: Kp, Tn, Tv", "Proportionalband: Xp, Tn, Tv"],
+    key="converter_form",
+)
+with st.form("controller_converter"):
+    if converter_form == "Parallel: Kp, Ki, Kd":
+        conv_p = st.number_input("Kp", min_value=0.0, value=float(kp), key="converter_parallel_kp")
+        conv_i = st.number_input("Ki [1/s]", min_value=0.0, value=float(ki), key="converter_parallel_ki")
+        conv_d = st.number_input("Kd [s]", min_value=0.0, value=float(kd), key="converter_parallel_kd")
+        conv_unit = "s"
+    else:
+        if converter_form.startswith("Proportionalband"):
+            st.info("Xp = 100/Kp gilt nur bei auf 0–100 % normierter Regelabweichung und Stellgröße.")
+            conv_p = st.number_input("Proportionalband Xp [%]", min_value=0.000001, value=50.0, key="converter_xp")
+        else:
+            conv_p = st.number_input("Kp", min_value=0.0, value=float(kp), key="converter_ideal_kp")
+        conv_unit = st.selectbox("Zeiteinheit", ["s", "min"], key="converter_time_unit")
+        time_scale = 60.0 if conv_unit == "min" else 1.0
+        tn_default = kp / ki / time_scale if ki > 0 else 0.0
+        tv_default = kd / kp / time_scale if kp > 0 else 0.0
+        conv_i = st.number_input(f"Nachstellzeit Tn [{conv_unit}] (0 = kein I-Anteil)", min_value=0.0, value=float(tn_default), key="converter_tn")
+        conv_d = st.number_input(f"Vorhaltezeit Tv [{conv_unit}]", min_value=0.0, value=float(tv_default), key="converter_tv")
+    convert_clicked = st.form_submit_button("Umrechnen")
+
+if convert_clicked:
+    try:
+        st.session_state.converter_result = convert_controller_parameters(
+            converter_form, conv_p, conv_i, conv_d, conv_unit
+        )
+    except ValueError as exc:
+        st.session_state.pop("converter_result", None)
+        st.error(str(exc))
+
+if "converter_result" in st.session_state:
+    converted = st.session_state.converter_result
+    st.write(
+        f"**Parallele Form:** Kp = {converted['kp']:.6g}, "
+        f"Ki = {converted['ki']:.6g} 1/s, Kd = {converted['kd']:.6g} s"
+    )
+    if converted["kp"] > 0:
+        tn_display = converted["kp"] / converted["ki"] if converted["ki"] > 0 else None
+        st.caption(
+            f"Entspricht Tn = {tn_display:.6g} s" if tn_display is not None
+            else "Entspricht: kein I-Anteil"
+        )
+        st.caption(f"Tv = {converted['kd'] / converted['kp']:.6g} s")
+    if st.button("Umrechnung in Simulation übernehmen", key="converter_apply"):
+        st.session_state.defaults.update(converted)
+        st.session_state.controller_type = (
+            "PID" if converted["kd"] > 0 else "PI" if converted["ki"] > 0 else "P"
+        )
+        st.session_state.clear_parameter_widgets_pending = True
+        st.session_state.pop("converter_result", None)
+        st.rerun()
 
