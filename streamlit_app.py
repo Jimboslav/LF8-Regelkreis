@@ -21,111 +21,62 @@ def _praxis_variant(
     }
 
 
-_PI = ["Automatische Empfehlung", "P", "PI", "PID"]
-_TEMP = ["Automatische Empfehlung", "PI", "PID", "Kaskade", "Zweipunkt"]
-_STAGES = ["Automatische Empfehlung", "PI", "Stufen-/Kaskadensteuerung"]
-_AIR = ["Ventilator ohne FU", "Ventilator mit FU", "EC-Ventilator", "VAV-Klappe"]
-_PUMP = ["Pumpe ohne FU", "Pumpe mit FU", "EC-Pumpe", "Regelventil"]
-_VALVE = ["2-Wege-Regelventil", "3-Wege-Mischventil", "Motorventil", "Magnetventil"]
-_MOTOR = ["Motor ohne FU", "Motor mit FU", "EC-Motor", "Servoantrieb"]
 
-
+# Nur Vorgaben, deren Regelaufgabe mit dem Ein-Kreis-Modell nachvollziehbar
+# dargestellt werden kann. Spezielle Strategien bleiben draußen, bis sie
+# als eigene Regelfunktionen implementiert sind.
 PRACTICAL_PROCESS_CATALOG = {
     "RLT / Lüftung": {
-        "Zulufttemperatur": _praxis_variant("Temperaturregelung", "Zulufttemperatur [°C]", "Heiz-/Kühlregister", "Luft- und Registermasse", "Außenluft / Last", _VALVE, _TEMP, "mittel"),
-        "Raum- oder Ablufttemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "RLT-Anlage / Raum", "Gebäudemasse", "Außentemperatur / interne Last", _VALVE + _AIR, _TEMP, "sehr träge"),
-        "Kanal-Differenzdruck": _praxis_variant("Generische Prozessstrecke", "Differenzdruck [Pa]", "Ventilator / Kanalnetz", "kompressibles Luftvolumen", "Klappen- und VAV-Stellung", _AIR, _PI, "schnell"),
-        "Volumenstrom": _praxis_variant("Durchflussregelung", "Luftvolumenstrom [m³/h]", "Ventilator / Kanal", "Kanalvolumen", "Filterverschmutzung / Klappen", _AIR, _PI, "schnell"),
-        "CO₂ / Luftqualität": _praxis_variant("Generische Prozessstrecke", "CO₂-Konzentration [ppm]", "Außenluftzufuhr / Raum", "Raumluftvolumen", "Personenbelegung", _AIR, ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
-        "Raum- oder Zuluftfeuchte": _praxis_variant("Generische Prozessstrecke", "relative Feuchte [% r. F.]", "Befeuchter / Entfeuchter", "Feuchtespeicherung", "Außenluft / Feuchtelast", ["Dampfbefeuchter", "Sprühbefeuchter", "Kühlregister", "Regelventil"], _TEMP, "träge"),
-        "Mischlufttemperatur": _praxis_variant("Temperaturregelung", "Mischlufttemperatur [°C]", "Außen-/Umluftklappen", "Kanal- und Sensormasse", "Außenlufttemperatur", ["gekoppelte Mischluftklappen", "Einzelklappenantriebe"], ["Automatische Empfehlung", "PI", "Split-Range"], "mittel"),
-        "Frostschutz": _praxis_variant("Temperaturregelung", "Temperatur nach Heizregister [°C]", "Vorheizregister", "Registermasse", "Frost / Luftstromausfall", _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt", "Sicherheitsbegrenzung"], "schnell", "Nein"),
+        "Zulufttemperatur": _praxis_variant(
+            "Temperaturregelung", "Zulufttemperatur [°C]", "Heizregister / Luftstrom",
+            "Register und Kanal", "Außenlufttemperatur", ["2-Wege-Regelventil"],
+            ["Automatische Empfehlung", "PI"], "mittel"),
+        "VAV-Volumenstrom": _praxis_variant(
+            "Durchflussregelung", "Luftvolumenstrom [m³/h]", "VAV-Klappe / Kanal",
+            "Kanalvolumen", "Kanaldruck", ["VAV-Klappe"],
+            ["Automatische Empfehlung", "PI"], "schnell"),
     },
     "Heizung": {
-        "witterungsgeführter Heizkreis": _praxis_variant("Temperaturregelung", "Vorlauftemperatur [°C]", "Mischer / Heizkreis", "Wasser- und Gebäudemasse", "Außentemperatur / Abnahme", _VALVE + _PUMP, ["Automatische Empfehlung", "PI", "Heizkurve + PI"], "träge"),
-        "Heizkreis-Vorlauftemperatur": _praxis_variant("Temperaturregelung", "Vorlauftemperatur [°C]", "Wärmeerzeuger / Mischer", "Wasserinhalt", "Rücklauftemperatur", _VALVE, _TEMP, "träge"),
-        "Rücklauftemperaturbegrenzung": _praxis_variant("Temperaturregelung", "Rücklauftemperatur [°C]", "Bypass / Mischer", "Wasserinhalt", "Wärmeabnahme", _VALVE, ["Automatische Empfehlung", "PI", "Begrenzungsregelung"], "träge"),
-        "Raumtemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heizfläche / Raum", "Gebäudemasse", "Außentemperatur / Fremdwärme", _VALVE, _TEMP, "sehr träge"),
-        "Kesseltemperatur": _praxis_variant("Temperaturregelung", "Kesseltemperatur [°C]", "Brenner / Kessel", "Kesselwasser und Metall", "Wärmeabnahme", ["modulierender Brenner", "mehrstufiger Brenner", "Elektroheizung"], _TEMP, "träge"),
-        "Pufferspeicher-Ladung": _praxis_variant("Temperaturregelung", "Speichertemperatur [°C]", "Ladekreis", "Pufferspeicher", "Entnahme / Schichtung", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt", "Kaskade"], "sehr träge"),
-        "Trinkwarmwasserbereitung": _praxis_variant("Temperaturregelung", "Warmwassertemperatur [°C]", "Wärmetauscher / Speicher", "Warmwasservolumen", "Zapfung / Kaltwasser", _VALVE + _PUMP, _TEMP, "träge"),
+        "Heizkreis-Vorlauftemperatur": _praxis_variant(
+            "Temperaturregelung", "Vorlauftemperatur [°C]", "Mischer / Heizkreis",
+            "Wasserinhalt", "Rücklauftemperatur", ["3-Wege-Mischventil"],
+            ["Automatische Empfehlung", "PI"], "träge"),
+        "Trinkwarmwasserbereitung": _praxis_variant(
+            "Temperaturregelung", "Warmwassertemperatur [°C]", "Wärmetauscher / Speicher",
+            "Warmwasservolumen", "Zapfung", ["2-Wege-Regelventil"],
+            ["Automatische Empfehlung", "PI"], "träge"),
     },
     "Kälte": {
-        "Kaltwasser-Vorlauftemperatur": _praxis_variant("Temperaturregelung", "Kaltwasser-Vorlauf [°C]", "Kältemaschine / Verdampfer", "Wasserinhalt", "Kühllast", ["Verdichter mit FU", "Verdichterstufen", "Regelventil"], _TEMP, "träge"),
-        "Kaltwasser-Rücklauftemperatur": _praxis_variant("Temperaturregelung", "Kaltwasser-Rücklauf [°C]", "Verbrauchernetz", "Wasserinhalt", "Kühllast", _PUMP, _TEMP, "träge"),
-        "Kühlraumtemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Verdampfer / Kühlraum", "Produkt- und Gebäudemasse", "Türöffnung / Einlagerung", ["Verdichter", "Magnetventil", "elektronisches Expansionsventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
-        "Verdampfungsdruck": _praxis_variant("Druckregelung", "Verdampfungsdruck [bar]", "Verdichter / Verdampfer", "Kältemittelfüllung", "Kühllast", ["Verdichter mit FU", "Verdichterstufen", "Saugdruckregler"], _STAGES, "schnell"),
-        "Verflüssigungsdruck": _praxis_variant("Druckregelung", "Verflüssigungsdruck [bar]", "Verflüssiger", "Kältemittelfüllung", "Außentemperatur", ["Verflüssigerlüfter mit FU", "EC-Lüfter", "Wasserventil"], _PI, "mittel"),
-        "Überhitzungsregelung": _praxis_variant("Generische Prozessstrecke", "Überhitzung [K]", "Verdampfer / Expansionsventil", "Kältemittelfüllung", "Last- und Druckänderung", ["elektronisches Expansionsventil", "thermostatisches Expansionsventil"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
-        "Kältespeicher-Ladung": _praxis_variant("Temperaturregelung", "Speichertemperatur [°C]", "Ladekreis", "Kältespeicher", "Kälteentnahme", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+        "Kaltwasser-Vorlauftemperatur": _praxis_variant(
+            "Temperaturregelung", "Kaltwasser-Vorlauf [°C]", "Kälteerzeuger / Wasserkreis",
+            "Wasserinhalt", "Kühllast", ["2-Wege-Regelventil"],
+            ["Automatische Empfehlung", "PI"], "träge"),
     },
     "Wasser": {
-        "Behälter-Füllstand": _praxis_variant("Füllstandsregelung", "Füllstand [m]", "Zulauf / Behälter", "Behältervolumen", "Abfluss", _PUMP + _VALVE, _PI, "träge"),
-        "Druckhaltung": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Pumpe / Rohrnetz", "Druckbehälter", "Verbrauch", _PUMP, _PI, "mittel"),
-        "Durchfluss": _praxis_variant("Durchflussregelung", "Wasserdurchfluss [m³/h]", "Pumpe / Ventil / Rohr", "Rohrvolumen", "Vordruck / Verbraucher", _PUMP, _PI, "schnell"),
-        "Pumpenkaskade": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Mehrpumpenanlage", "Druckbehälter", "Verbrauch", ["Pumpen ohne FU", "Führungspumpe mit FU", "alle Pumpen mit FU"], _STAGES, "mittel"),
-        "Brunnen- oder Hochbehälter": _praxis_variant("Füllstandsregelung", "Wasserstand [m]", "Förderpumpe / Speicher", "Brunnen oder Hochbehälter", "Entnahme / Zulauf", _PUMP, ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
-        "Wassertemperatur": _praxis_variant("Temperaturregelung", "Wassertemperatur [°C]", "Wärmetauscher", "Wasservolumen", "Zulauftemperatur / Durchfluss", _VALVE, _TEMP, "träge"),
-    },
-    "Abwasser": {
-        "Pumpensumpf-Füllstand": _praxis_variant("Füllstandsregelung", "Füllstand [m]", "Pumpensumpf / Pumpen", "Sumpfvolumen", "schwankender Zulauf", ["Pumpe ohne FU", "Pumpe mit FU", "Mehrpumpenkaskade"], ["Automatische Empfehlung", "Zweipunkt", "Stufen-/Kaskadensteuerung", "PI"], "träge"),
-        "Zulauf- oder Ablaufmenge": _praxis_variant("Durchflussregelung", "Durchfluss [m³/h]", "Pumpe / Gerinne", "Becken- und Rohrvolumen", "Zulaufschwankung", _PUMP, _PI, "mittel"),
-        "Sauerstoff im Belebungsbecken": _praxis_variant("Generische Prozessstrecke", "Sauerstoff [mg/l]", "Belüftung / Becken", "Beckenvolumen und Biomasse", "Schmutzfracht", ["Gebläse mit FU", "EC-Gebläse", "Belüfterventil"], ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
-        "pH-Wert": _praxis_variant("Generische Prozessstrecke", "pH-Wert", "Neutralisation / Becken", "Beckenvolumen", "Zulauf-pH und Pufferkapazität", ["Dosierpumpe Säure", "Dosierpumpe Lauge", "Split-Range-Dosierung"], ["Automatische Empfehlung", "PI", "Split-Range"], "träge", "Nein"),
-        "Leitfähigkeit": _praxis_variant("Generische Prozessstrecke", "Leitfähigkeit [µS/cm]", "Dosierung / Spülung", "Beckenvolumen", "Stoffeintrag", ["Dosierpumpe", "Spülventil"], _PI, "träge"),
-        "Chemikaliendosierung": _praxis_variant("Durchflussregelung", "Dosierstrom [l/h]", "Dosierpumpe / Leitung", "Leitungsvolumen", "Gegendruck / Konzentration", ["Membrandosierpumpe", "Schlauchpumpe", "Regelventil"], _PI, "schnell"),
+        "Druckhaltung": _praxis_variant(
+            "Druckregelung", "Netzdruck [bar]", "Pumpe / Rohrnetz",
+            "Druckspeicher", "Verbrauch", ["Pumpe mit FU"],
+            ["Automatische Empfehlung", "PI"], "mittel"),
+        "Durchfluss": _praxis_variant(
+            "Durchflussregelung", "Wasserdurchfluss [m³/h]", "Regelventil / Rohr",
+            "Rohrvolumen", "Vordruck", ["Regelventil"],
+            ["Automatische Empfehlung", "PI"], "schnell"),
     },
     "Druckluft": {
-        "Netzdruck": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Verdichter / Netz", "Druckluftbehälter", "Luftverbrauch", ["Verdichter mit FU", "Last-Leerlauf-Verdichter", "Verdichterkaskade"], _STAGES, "mittel"),
-        "Behälterdruck": _praxis_variant("Druckregelung", "Behälterdruck [bar]", "Verdichter / Behälter", "Druckbehälter", "Entnahme", ["Verdichter ohne FU", "Verdichter mit FU", "Einlassventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "mittel"),
-        "Verdichterkaskade": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Mehrverdichteranlage", "Netz- und Behältervolumen", "Verbrauch", ["Grundlast-/Spitzenlastverdichter", "alle Verdichter mit FU"], _STAGES, "mittel"),
-        "Taupunkt": _praxis_variant("Generische Prozessstrecke", "Drucktaupunkt [°C]", "Trockner", "Trocknermasse / Adsorber", "Feuchtelast", ["Kältetrockner", "Adsorptionstrockner", "Bypassventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+        "Netzdruck": _praxis_variant(
+            "Druckregelung", "Netzdruck [bar]", "Verdichter / Druckluftnetz",
+            "Druckluftbehälter", "Luftverbrauch", ["Verdichter mit FU"],
+            ["Automatische Empfehlung", "PI"], "mittel"),
     },
     "Elektroantrieb": {
-        "Drehzahl": _praxis_variant("Drehzahlregelung", "Drehzahl [1/min]", "Motor / Last", "Trägheitsmoment", "Lastmoment", _MOTOR, _PI, "schnell"),
-        "Position": _praxis_variant("Position / Mechanik", "Position [mm]", "Antrieb / Mechanik", "Masse / Feder", "Lastkraft / Reibung", ["Servoantrieb", "Schrittmotor", "Motor mit FU und Geber", "Linearantrieb"], ["Automatische Empfehlung", "P", "PI", "PID"], "mittel"),
-        "Drehmoment": _praxis_variant("Generische Prozessstrecke", "Drehmoment [Nm]", "Motor / Last", "mechanische Trägheit", "Lastmoment", ["Motor mit FU", "Servoantrieb", "DC-Antrieb"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
-        "Bandgeschwindigkeit": _praxis_variant("Drehzahlregelung", "Bandgeschwindigkeit [m/s]", "Motor / Getriebe / Band", "Massen und Trägheit", "Beladung / Schlupf", _MOTOR, _PI, "mittel"),
-        "Gleichlauf / Synchronisation": _praxis_variant("Drehzahlregelung", "Drehzahl- oder Positionsabweichung", "gekoppelte Antriebe", "Trägheitsmomente", "Lastunterschiede", ["mehrere Servoantriebe", "mehrere FU-Antriebe", "elektronische Königswelle"], ["Automatische Empfehlung", "PI", "PID", "Kaskade"], "schnell"),
-    },
-    "Raumautomation": {
-        "Raumtemperatur Heizen": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heizfläche / Raum", "Gebäudemasse", "Außentemperatur / Belegung", _VALVE, _TEMP, "sehr träge"),
-        "Raumtemperatur Kühlen": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Kühldecke / Raum", "Gebäudemasse", "Außentemperatur / solare Last", _VALVE, _TEMP, "sehr träge"),
-        "Heiz-/Kühlsequenz": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heiz- und Kühlventil", "Gebäudemasse", "Wärme- und Kühllast", ["Heizventil + Kühlventil", "6-Wege-Ventil", "Fan-Coil"], ["Automatische Empfehlung", "Split-Range", "PI"], "sehr träge"),
-        "CO₂-geführte Lüftung": _praxis_variant("Generische Prozessstrecke", "CO₂ [ppm]", "Luftwechsel / Raum", "Raumluftvolumen", "Belegung", _AIR, ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
-        "VAV-Volumenstrom": _praxis_variant("Durchflussregelung", "Volumenstrom [m³/h]", "VAV-Box / Kanal", "Kanalvolumen", "Kanaldruck", ["VAV-Klappe", "EC-Ventilator"], _PI, "schnell"),
-        "Raumfeuchte": _praxis_variant("Generische Prozessstrecke", "relative Feuchte [% r. F.]", "Befeuchter / Entfeuchter", "Raum- und Materialfeuchte", "Personen / Außenluft", ["Raumbefeuchter", "Kühlventil", "Luftmengensteller"], _TEMP, "träge"),
-    },
-    "Dampf": {
-        "Dampfdruck": _praxis_variant("Druckregelung", "Dampfdruck [bar]", "Dampferzeuger", "Kessel- und Dampfvolumen", "Dampfentnahme", ["modulierender Brenner", "Elektroheizung", "Druckregelventil"], _TEMP, "träge"),
-        "Dampftemperatur": _praxis_variant("Generische Prozessstrecke", "Dampftemperatur [°C]", "Überhitzer / Einspritzung", "Rohr- und Metallmasse", "Dampfmenge", ["Einspritzventil", "Brennerleistung"], _TEMP, "träge"),
-        "Kesselwasserstand": _praxis_variant("Füllstandsregelung", "Kesselwasserstand", "Speisewasser / Trommel", "Trommelvolumen", "Dampfentnahme", ["Speisewasserventil", "Speisewasserpumpe mit FU"], ["Automatische Empfehlung", "PI", "Kaskade", "Dreipunktregelung"], "mittel"),
-        "Kondensatstand": _praxis_variant("Füllstandsregelung", "Kondensatstand", "Kondensatbehälter", "Behältervolumen", "Kondensatanfall", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt"], "träge"),
-    },
-    "Prozesswärme": {
-        "Ofentemperatur": _praxis_variant("Temperaturregelung", "Ofentemperatur [°C]", "Brenner / Heizelement", "Ofen- und Produktmasse", "Beschickung / Türöffnung", ["modulierender Brenner", "Thyristorsteller", "Schützstufen"], _TEMP, "sehr träge"),
-        "Zonentemperatur": _praxis_variant("Temperaturregelung", "Zonentemperatur [°C]", "Heizzone", "Zonen- und Produktmasse", "Nachbarzonen / Produkt", ["Thyristorsteller", "Heizregister", "Brennerzone"], ["Automatische Empfehlung", "PI", "PID", "Kaskade"], "träge"),
-        "Wärmeträgertemperatur": _praxis_variant("Temperaturregelung", "Wärmeträgertemperatur [°C]", "Erhitzer / Kreislauf", "Fluid- und Anlagenmasse", "Prozessabnahme", _VALVE + _PUMP, _TEMP, "träge"),
-        "Kaskade Produkt/Medium": _praxis_variant("Temperaturregelung", "Produkttemperatur [°C]", "Medium und Produkt", "Produktmasse", "Durchsatz / Eintrittstemperatur", _VALVE, ["Automatische Empfehlung", "Kaskade", "PI", "PID"], "sehr träge"),
-    },
-    "Dosierung / Chemie": {
-        "pH-Wert": _praxis_variant("Generische Prozessstrecke", "pH-Wert", "Reaktor / Neutralisation", "Reaktorvolumen", "Zulauf-pH / Pufferkapazität", ["Säure-Dosierpumpe", "Lauge-Dosierpumpe", "Split-Range-Dosierung"], ["Automatische Empfehlung", "PI", "Split-Range"], "träge"),
-        "Leitfähigkeit": _praxis_variant("Generische Prozessstrecke", "Leitfähigkeit [µS/cm]", "Dosierung / Spülung", "Prozessvolumen", "Salz- oder Chemikalieneintrag", ["Dosierpumpe", "Spülventil"], _PI, "träge"),
-        "Konzentration": _praxis_variant("Generische Prozessstrecke", "Konzentration [%]", "Mischer / Reaktor", "Reaktorvolumen", "Zulaufkonzentration", ["Dosierpumpe", "Regelventil", "Mischventil"], _PI, "träge"),
-        "Mischungsverhältnis": _praxis_variant("Durchflussregelung", "Mischungsverhältnis", "zwei Stoffströme / Mischer", "Mischvolumen", "Vordruck / Stoffeigenschaften", ["zwei Regelventile", "zwei Dosierpumpen"], ["Automatische Empfehlung", "Verhältnisregelung", "Kaskade", "PI"], "mittel"),
-        "Dosiermenge": _praxis_variant("Durchflussregelung", "Dosierstrom [l/h]", "Dosierpumpe", "Leitungsvolumen", "Gegendruck", ["Membrandosierpumpe", "Schlauchpumpe", "Schneckenförderer"], _PI, "schnell"),
-    },
-    "Hydraulik / Pneumatik": {
-        "Systemdruck": _praxis_variant("Druckregelung", "Druck [bar]", "Pumpe / Kompressor / Ventil", "Speicher und Leitungsvolumen", "Last / Leckage", ["Pumpe mit FU", "Proportionalventil", "Druckregelventil"], _PI, "schnell"),
-        "Zylinderposition": _praxis_variant("Position / Mechanik", "Position [mm]", "Zylinder / Last", "Masse und Fluidkompressibilität", "Lastkraft / Reibung", ["Proportionalventil", "Servoventil", "Pneumatikventil"], ["Automatische Empfehlung", "P", "PI", "PID"], "schnell"),
-        "Kraft": _praxis_variant("Generische Prozessstrecke", "Kraft [N]", "Zylinder / Werkzeug", "mechanische Nachgiebigkeit", "Gegenkraft", ["Proportional-Druckventil", "Servoventil"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
-        "Geschwindigkeit": _praxis_variant("Durchflussregelung", "Geschwindigkeit [mm/s]", "Ventil / Zylinder", "bewegte Masse", "Last / Reibung", ["Proportionalventil", "Stromregelventil", "Servoventil"], _PI, "schnell"),
-    },
-    "Energie": {
-        "Leistungsbegrenzung": _praxis_variant("Generische Prozessstrecke", "Bezugsleistung [kW]", "Verbraucher / Leistungssteller", "thermische und elektrische Flexibilität", "Lastsprünge", ["Leistungssollwert", "Lastabwurf", "Batteriewechselrichter"], ["Automatische Empfehlung", "PI", "Prioritätssteuerung"], "mittel"),
-        "Eigenverbrauchsoptimierung": _praxis_variant("Generische Prozessstrecke", "Netzleistung [kW]", "PV / Speicher / Verbraucher", "Batteriespeicher", "PV-Erzeugung / Verbrauch", ["Batteriewechselrichter", "steuerbare Verbraucher", "Wärmepumpe"], ["Automatische Empfehlung", "PI", "Energiemanagement"], "mittel"),
-        "Speicherladung": _praxis_variant("Generische Prozessstrecke", "Ladezustand [%]", "Batterie / Ladegerät", "Batteriekapazität", "Verbrauch / Erzeugung", ["Batteriewechselrichter", "Ladegerät"], ["Automatische Empfehlung", "Leistungsregelung", "Energiemanagement"], "sehr träge"),
-        "Lastmanagement": _praxis_variant("Generische Prozessstrecke", "Gesamtleistung [kW]", "Verbrauchergruppen", "verschiebbare Lasten", "Produktions- und Belegungsplan", ["Lastfreigaben", "Sollwertvorgaben", "Lastabwurf"], ["Automatische Empfehlung", "Prioritätssteuerung", "Energiemanagement"], "mittel"),
+        "Drehzahl": _praxis_variant(
+            "Drehzahlregelung", "Drehzahl [1/min]", "Motor / Last",
+            "Trägheitsmoment", "Lastmoment", ["Motor mit FU"],
+            ["Automatische Empfehlung", "PI"], "schnell"),
+        "Position": _praxis_variant(
+            "Position / Mechanik", "Position [mm]", "Servoantrieb / Mechanik",
+            "Masse / Feder", "Lastkraft", ["Servoantrieb"],
+            ["Automatische Empfehlung", "PI"], "mittel"),
     },
 }
 
@@ -376,11 +327,8 @@ if not st.session_state.app_started:
             help="Wählt die konkrete Regelaufgabe und damit passende Prozess-, Sensor- und Störungswerte.",
         )
         start_profile = start_variants[start_variant]
-        start_actuator = st.selectbox(
-            "Stellglied / Antrieb",
-            start_profile["actuators"],
-            help="Das Stellglied setzt das Ausgangssignal des Reglers physikalisch um.",
-        )
+        start_actuator = start_profile["actuators"][0]
+        st.caption(f"Passendes Stellglied: {start_actuator}")
         start_strategy = st.selectbox(
             "Regelstrategie",
             start_profile["strategies"],
@@ -527,6 +475,8 @@ if not st.session_state.app_started:
 import numpy as np
 import pandas as pd
 
+MAX_SIM_POINTS = 20_000
+
 if st.session_state.active_view in ("builder", "wirkplan"):
     from streamlit_flow import streamlit_flow
     from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
@@ -587,14 +537,8 @@ if "wirkplan_config" not in st.session_state:
         "messglied": "Messumformer",
         "stellglied": "Leistungssteller / Heizung",
         "sollwertgeber": "Sollwertvorgabe",
-        "messbereich_min": 0.0,
-        "messbereich_max": 100.0,
-        "sensor_zeitkonstante_s": 0.2,
-        "messrauschen": 0.0,
-        "totzeit_s": 0.0,
         "stellgroesse_min": 0.0,
         "stellgroesse_max": 100.0,
-        "stellrate_max": 100.0,
         "auslegung": "Automatisch",
         "man_controller_type": "PI",
         "man_plant_type": "PT1",
@@ -755,6 +699,13 @@ def simulate_control_loop(
     u_min=None,
     u_max=None,
 ):
+    if not np.isfinite(t_end) or not np.isfinite(dt) or t_end <= 0 or dt <= 0:
+        raise ValueError("Simulationsdauer und Schrittweite müssen endlich und größer als 0 sein.")
+    if t_end / dt + 2 > MAX_SIM_POINTS:
+        raise ValueError(
+            f"Zu viele Simulationspunkte (maximal {MAX_SIM_POINTS:,}). "
+            "Erhöhe dt oder verkürze die Simulationsdauer."
+        )
     t = np.arange(0.0, t_end + dt, dt)
 
     y_plant = np.zeros_like(t)
@@ -847,6 +798,9 @@ def simulate_control_loop(
 
         y_out[k] = y_plant[k] + output_disturbance
 
+    if not np.isfinite(y_out).all() or not np.isfinite(u_controller).all():
+        raise ValueError("Die Simulation wurde numerisch instabil. Wähle ein größeres Ts oder ein kleineres dt.")
+
     df = pd.DataFrame({
         "Zeit [s]": t,
         "Sollwert w": setpoint,
@@ -867,18 +821,18 @@ def calculate_metrics(df: pd.DataFrame, setpoint: float):
     steady_error = setpoint - final_value
 
     if setpoint != 0:
-        overshoot = max(0.0, (np.max(y) - setpoint) / abs(setpoint) * 100)
+        direction = 1.0 if setpoint > 0 else -1.0
+        overshoot = max(0.0, (np.max(direction * y) - direction * setpoint) / abs(setpoint) * 100)
         tolerance = 0.02 * abs(setpoint)
     else:
         overshoot = 0.0
         tolerance = 0.02
 
-    settling_time = None
-
-    for i in range(len(y)):
-        if np.all(np.abs(y[i:] - setpoint) <= tolerance):
-            settling_time = t[i]
-            break
+    # Letzten Punkt außerhalb des Toleranzbands suchen statt alle Suffixe
+    # wiederholt zu prüfen (linear statt quadratisch bei großen Datensätzen).
+    outside = np.flatnonzero(np.abs(y - setpoint) > tolerance)
+    first_settled = 0 if len(outside) == 0 else int(outside[-1]) + 1
+    settling_time = t[first_settled] if first_settled < len(t) else None
 
     return final_value, steady_error, overshoot, settling_time
 
@@ -937,6 +891,7 @@ def convert_controller_parameters(form, proportional, integral, derivative, time
 SHARED_PARAMETER_KEYS = (
     "kp", "ki", "kd", "ks", "ts", "zeta", "omega0", "setpoint",
     "t_end", "dt", "disturbance_time", "disturbance_value", "u_min", "u_max",
+    "model_note", "output_unit",
 )
 
 
@@ -968,6 +923,8 @@ def shared_parameters_from_derived(derived: dict):
     if physical.get("active"):
         values["u_min"] = physical.get("u_min")
         values["u_max"] = physical.get("u_max")
+        values["model_note"] = physical.get("model_note")
+        values["output_unit"] = physical.get("output_unit")
     return values
 
 
@@ -1592,6 +1549,8 @@ def validate_interactive_builder():
 
     if float(config.get("t_end", 0.0)) <= 0:
         errors.append("Die Simulationsdauer muss größer als 0 sein.")
+    elif float(config.get("dt", 0.0)) > 0 and float(config["t_end"]) / float(config["dt"]) + 2 > MAX_SIM_POINTS:
+        errors.append(f"Maximal {MAX_SIM_POINTS:,} Simulationspunkte erlaubt; dt erhöhen oder Dauer verkürzen.")
 
     if float(config.get("dt", 0.01)) >= float(config.get("t_end", 20.0)) / 20:
         warnings.append(
@@ -2526,14 +2485,8 @@ def ensure_real_process_defaults(config: dict):
         "messglied": "Messumformer",
         "stellglied": "Leistungssteller / Heizung",
         "sollwertgeber": "Sollwertvorgabe",
-        "messbereich_min": 0.0,
-        "messbereich_max": 100.0,
-        "sensor_zeitkonstante_s": 0.2,
-        "messrauschen": 0.0,
-        "totzeit_s": 0.0,
         "stellgroesse_min": 0.0,
         "stellgroesse_max": 100.0,
-        "stellrate_max": 100.0,
         "auslegung": "Automatisch",
         "man_controller_type": "PI",
         "man_plant_type": "PT1",
@@ -2561,8 +2514,6 @@ def validate_wirkplan_config(config: dict):
     errors = []
     if float(config.get("stellgroesse_min", 0.0)) >= float(config.get("stellgroesse_max", 100.0)):
         errors.append("Die maximale Stellgröße muss größer als die minimale Stellgröße sein.")
-    if float(config.get("messbereich_min", 0.0)) >= float(config.get("messbereich_max", 100.0)):
-        errors.append("Das Messbereichsmaximum muss größer als das Messbereichsminimum sein.")
     if config.get("reale_daten_aktiv", True):
         process = config.get("prozessart")
         if process == "Temperaturregelung":
@@ -2586,15 +2537,21 @@ def validate_wirkplan_config(config: dict):
     if config.get("auslegung") == "Manuell":
         if float(config.get("man_dt", 0.01)) >= float(config.get("man_t_end", 25.0)):
             errors.append("Der Zeitschritt dt muss kleiner als die Simulationsdauer sein.")
+        if float(config.get("man_t_end", 25.0)) / max(float(config.get("man_dt", 0.01)), 0.0001) + 2 > MAX_SIM_POINTS:
+            errors.append(f"Maximal {MAX_SIM_POINTS:,} Simulationspunkte erlaubt; dt erhöhen oder Dauer verkürzen.")
         if config.get("man_controller_type") in ["PI", "PID"] and float(config.get("man_ki", 0.0)) <= 0:
             errors.append("Ein PI-/PID-Regler benötigt Ki > 0.")
         if config.get("man_controller_type") == "PID" and float(config.get("man_kd", 0.0)) <= 0:
             errors.append("Ein PID-Regler benötigt Kd > 0.")
+    if config.get("reale_daten_aktiv", True) and config.get("auslegung") != "Manuell":
+        physical = calculate_real_process_data(config)
+        if not physical.get("feasible", True):
+            errors.append("Die eingestellten Anlagendaten erfüllen die physikalische Erreichbarkeit nicht. Bitte die Warnung bei den Anlagenkennwerten prüfen.")
     return errors
 
 
 def calculate_real_process_data(config: dict):
-    """Berechnet aus realen Anlagendaten ein nachvollziehbares PT1-Ersatzmodell."""
+    """Leitet aus Anlagendaten das gewählte vereinfachte Streckenmodell ab."""
     prozessart = config["prozessart"]
     result = {
         "active": bool(config.get("reale_daten_aktiv", True)),
@@ -2605,6 +2562,7 @@ def calculate_real_process_data(config: dict):
         },
         "metrics": [],
         "warnings": [],
+        "feasible": True,
         "node_details": {},
         "begruendung": [],
     }
@@ -2641,6 +2599,7 @@ def calculate_real_process_data(config: dict):
         anfangssteigung_k_min = wirksame_heizleistung_w / waermekapazitaet_j_k * 60.0
 
         if soll_delta_t > max_delta_t:
+            result["feasible"] = False
             result["warnings"].append(
                 f"Die gewünschte Temperatur ist mit der eingetragenen "
                 f"{'Heiz' if betriebsart == 'Heizen' else 'Kühl'}leistung und dem "
@@ -2720,6 +2679,7 @@ def calculate_real_process_data(config: dict):
             mechanische_hochlaufzeit = traegheit * omega_n / beschleunigungsmoment
         else:
             mechanische_hochlaufzeit = hochlaufzeit
+            result["feasible"] = False
             result["warnings"].append(
                 "Das berechnete Motormoment ist nicht größer als das Lastmoment. "
                 "Ein sicherer Hochlauf ist mit diesen Angaben nicht nachgewiesen."
@@ -2778,6 +2738,7 @@ def calculate_real_process_data(config: dict):
         else:
             vollfuellzeit_s = volumen / zulauf * 3600.0
             sollzeit_s = querschnitt * soll / zulauf * 3600.0
+            result["feasible"] = False
             result["warnings"].append(
                 "Der maximale Zulauf ist nicht größer als der Abfluss. Der Sollfüllstand kann bei konstantem Abfluss nicht erreicht werden."
             )
@@ -2822,6 +2783,7 @@ def calculate_real_process_data(config: dict):
         )
 
     elif prozessart == "Druckregelung":
+        is_air = config.get("anlagenart") == "Druckluft"
         volumen = max(float(config.get("druck_volumen_m3", 1.0)), 0.001)
         p_max = max(float(config.get("druck_max_bar", 10.0)), 0.01)
         p_soll = _clamp(config.get("druck_soll_bar", 6.0), 0.0, p_max)
@@ -2830,8 +2792,11 @@ def calculate_real_process_data(config: dict):
         vorgabe_ts = max(float(config.get("druck_zeitkonstante_s", 3.0)), 0.05)
         netto = foerderstrom - verbrauch
         fuellzeit = volumen / max(abs(netto), 0.001) * 3600.0
-        ts = max(vorgabe_ts, fuellzeit / 3.0)
+        # Volumenstrom allein bestimmt weder hydraulische Kompressibilität
+        # noch die Verdichterkennlinie. Ts ist deshalb ein messbarer PT1-Wert.
+        ts = vorgabe_ts
         if netto <= 0:
+            result["feasible"] = False
             result["warnings"].append(
                 "Der Förderstrom ist nicht größer als der Verbrauch; der Solldruck ist so nicht dauerhaft erreichbar."
             )
@@ -2839,21 +2804,22 @@ def calculate_real_process_data(config: dict):
             "plant_type": "PT1", "ks": p_max / 100.0, "ts": ts,
             "setpoint": p_soll, "t_end": max(20.0, 6.0 * ts),
             "disturbance_value": -max(0.1, 0.1 * p_soll),
-            "input_unit": "% Verdichterleistung", "output_unit": "bar",
-            "model_note": "Das Druckmodell nutzt Behältervolumen, Förderstrom, Verbrauch und eine minimale Anlagenzeitkonstante als PT1-Näherung.",
+            "input_unit": "% Verdichterdrehzahl" if is_air else "% Pumpendrehzahl", "output_unit": "bar",
+            "model_note": "Empirisches PT1-Ersatzmodell: Die gemessene Anlagenzeitkonstante bestimmt die Dynamik. Volumen und Förderstrom dienen nur der Kapazitätsprüfung; ohne Kennlinie und Kompressibilität lässt sich der Druckverlauf daraus nicht berechnen.",
         })
         result["metrics"] = [
             ("Behältervolumen", f"{volumen:.3f} m³"), ("Netto-Förderstrom", f"{netto:.2f} m³/h"),
-            ("Füllzeit", f"{fuellzeit:.1f} s"), ("PT1-Zeitkonstante", f"{ts:.2f} s"),
+            ("Volumenaustauschzeit (nur Kennwert)", f"{fuellzeit:.1f} s"), ("PT1-Zeitkonstante", f"{ts:.2f} s"),
             ("Solldruck", f"{p_soll:.2f} bar"), ("Maximaldruck", f"{p_max:.2f} bar"),
         ]
         result["node_details"] = {
-            "stellgroesse": f"0–100 %, {foerderstrom:.1f} m³/h", "prozessglied": "Verdichter / Ventil",
+            "stellgroesse": f"0–100 %, {foerderstrom:.1f} m³/h", "prozessglied": "Verdichter mit FU" if is_air else "Pumpe mit FU",
             "speicher": f"{volumen:.2f} m³ Druckspeicher", "regelgroesse": f"Soll {p_soll:.2f} bar",
         }
-        result["begruendung"].append("Speichervolumen und Netto-Förderstrom bestimmen die Druckdynamik des PT1-Ersatzmodells.")
+        result["begruendung"].append("Die vorgegebene Anlagenzeitkonstante bestimmt die Dynamik; Förderstrom und Verbrauch prüfen nur die grundsätzliche Erreichbarkeit.")
 
     elif prozessart == "Durchflussregelung":
+        is_air = config.get("anlagenart") == "RLT / Lüftung"
         q_max = max(float(config.get("flow_max_m3h", 100.0)), 0.001)
         q_soll = _clamp(config.get("flow_soll_m3h", 60.0), 0.0, q_max)
         laenge = max(float(config.get("flow_rohrlaenge_m", 20.0)), 0.0)
@@ -2862,13 +2828,16 @@ def calculate_real_process_data(config: dict):
         druckverlust = max(float(config.get("flow_druckverlust_bar", 1.5)), 0.0)
         rohrvolumen = np.pi * (durchmesser / 2000.0) ** 2 * laenge
         transportzeit = rohrvolumen / q_max * 3600.0
-        ts = max(ventilzeit, transportzeit)
+        # Rohr-Verweilzeit ist keine Verzögerung der Durchflussmessung.
+        # Ohne Pumpen-/Ventilkennlinie ist die Stellgliedzeit die belastbare
+        # Zeitkonstante des vereinfachten Durchflussmodells.
+        ts = ventilzeit
         result.update({
             "plant_type": "PT1", "ks": q_max / 100.0, "ts": ts,
             "setpoint": q_soll, "t_end": max(10.0, 8.0 * ts),
             "disturbance_value": -max(0.1, 0.1 * q_soll),
-            "input_unit": "% Ventilöffnung", "output_unit": "m³/h",
-            "model_note": "Ventildynamik und Transportzeit im Rohr werden zu einer robusten PT1-Näherung zusammengefasst.",
+            "input_unit": "% VAV-Klappenöffnung" if is_air else "% Ventilöffnung", "output_unit": "m³/h",
+            "model_note": "Empirisches PT1-Ersatzmodell: Die Stellgliedzeit bestimmt die Dynamik. Rohrvolumen und Verweilzeit sind nur Kennwerte; die hydraulische Durchflussantwort folgt daraus nicht direkt.",
         })
         result["metrics"] = [
             ("Rohrvolumen", f"{rohrvolumen:.3f} m³"), ("Transportzeit", f"{transportzeit:.2f} s"),
@@ -2876,10 +2845,10 @@ def calculate_real_process_data(config: dict):
             ("Sollfluss", f"{q_soll:.2f} m³/h"), ("Druckverlust", f"{druckverlust:.2f} bar"),
         ]
         result["node_details"] = {
-            "stellgroesse": "Ventil 0–100 %", "prozessglied": f"Rohr DN {durchmesser:.0f}, {laenge:.1f} m",
+            "stellgroesse": f"{config.get('stellglied_typ', 'Stellglied')} 0–100 %", "prozessglied": f"{'Kanal' if is_air else 'Rohr'} Ø {durchmesser:.0f} mm, {laenge:.1f} m",
             "speicher": f"Rohrvolumen {rohrvolumen:.3f} m³", "regelgroesse": f"Soll {q_soll:.1f} m³/h",
         }
-        result["begruendung"].append("Ventilzeit und Rohrvolumen bestimmen die Durchflussdynamik.")
+        result["begruendung"].append("Die Stellgliedzeit bestimmt das PT1-Ersatzmodell; die Rohrdaten beschreiben nur den Aufbau.")
 
     elif prozessart == "Position / Mechanik":
         masse = max(float(config.get("pos_masse_kg", 25.0)), 0.001)
@@ -2893,6 +2862,7 @@ def calculate_real_process_data(config: dict):
         ts_equiv = 1.0 / max(omega0, 0.001)
         static_full_stroke_mm = 1000.0 * kraft / feder
         if soll > min(hub, static_full_stroke_mm):
+            result["feasible"] = False
             result["warnings"].append(
                 "Die gewünschte Position ist bei der gewählten Federsteifigkeit und Stellkraft "
                 "im statischen Gleichgewicht nicht erreichbar."
@@ -3138,6 +3108,11 @@ def derive_controller_from_wirkplan(config: dict):
         result["begruendung"].append(
             "Da Überschwingen nicht zulässig ist, werden die Reglerparameter defensiver gewählt."
         )
+        if prozessart == "Position / Mechanik" and uses_real_model:
+            result["ki"] *= 0.4
+            result["begruendung"].append(
+                "Der I-Anteil der Positionsregelung wird zusätzlich reduziert, um Überschwingen des PT2-Modells zu begrenzen."
+            )
 
     if stoerungen_relevant == "Ja":
         result["disturbance_position"] = config.get("stoerort", "Vor der Strecke")
@@ -3494,137 +3469,80 @@ def apply_practical_variant_defaults(config: dict):
         "stellgroesse_max": 100.0,
     })
 
-    controlled = profile["controlled"]
     model = profile["model"]
 
     # Praxiswerte statt eines einzigen Universal-Presets. Die Werte sind
     # bewusst plausible Startpunkte und bleiben in der Oberfläche editierbar.
     if model == "Temperaturregelung":
-        if category in {"RLT / Lüftung", "Raumautomation"}:
-            is_room = category == "Raumautomation" or "Raum" in variant_name
-            is_cooling = "Kühl" in variant_name
+        if category == "RLT / Lüftung":
             config.update({
-                "temp_betriebsart": "Kühlen" if is_cooling else "Heizen",
-                "temp_medium": "Luft", "temp_volumen_m3": 300.0 if is_room else 3.0,
+                "temp_betriebsart": "Heizen",
+                "temp_medium": "Luft", "temp_volumen_m3": 20.0,
                 "temp_heizleistung_kw": 20.0,
-                "temp_umgebung_c": 30.0 if is_cooling else 5.0,
-                "temp_soll_c": 23.0 if is_cooling else 21.0,
+                "temp_umgebung_c": 5.0,
+                "temp_soll_c": 21.0,
                 "temp_waermeverlust_w_k": 600.0,
                 "temp_wirkungsgrad": 0.9,
             })
         elif category == "Kälte":
             config.update({
                 "temp_betriebsart": "Kühlen", "temp_medium": "Wasser",
-                "temp_volumen_m3": 0.8, "temp_heizleistung_kw": 35.0,
+                "temp_volumen_m3": 0.25, "temp_heizleistung_kw": 35.0,
                 "temp_umgebung_c": 12.0, "temp_soll_c": 6.0,
-                "temp_waermeverlust_w_k": 900.0, "temp_wirkungsgrad": 0.85,
+                "temp_waermeverlust_w_k": 1500.0, "temp_wirkungsgrad": 0.85,
             })
-        elif category == "Prozesswärme":
-            config.update({
-                "temp_betriebsart": "Heizen", "temp_medium": "Benutzerdefiniert",
-                "temp_volumen_m3": 2.0, "temp_heizleistung_kw": 150.0,
-                "temp_umgebung_c": 20.0, "temp_soll_c": 180.0,
-                "temp_waermeverlust_w_k": 750.0, "temp_wirkungsgrad": 0.88,
-                "temp_dichte_kg_m3": 780.0, "temp_cp_kj_kgk": 2.0,
-            })
-        else:
+        elif variant_name == "Trinkwarmwasserbereitung":
             config.update({
                 "temp_betriebsart": "Heizen", "temp_medium": "Wasser",
-                "temp_volumen_m3": 0.5, "temp_heizleistung_kw": 30.0,
-                "temp_umgebung_c": 20.0, "temp_soll_c": 55.0,
-                "temp_waermeverlust_w_k": 450.0, "temp_wirkungsgrad": 0.95,
+                "temp_volumen_m3": 0.3, "temp_heizleistung_kw": 40.0,
+                "temp_umgebung_c": 10.0, "temp_soll_c": 55.0,
+                "temp_waermeverlust_w_k": 600.0, "temp_wirkungsgrad": 0.95,
+            })
+        elif category == "Heizung":
+            config.update({
+                "temp_betriebsart": "Heizen", "temp_medium": "Wasser",
+                "temp_volumen_m3": 0.1, "temp_heizleistung_kw": 45.0,
+                "temp_umgebung_c": 20.0, "temp_soll_c": 40.0,
+                "temp_waermeverlust_w_k": 1500.0, "temp_wirkungsgrad": 0.95,
             })
     elif model == "Druckregelung":
         if category == "Druckluft":
             config.update({
                 "druck_volumen_m3": 2.0, "druck_max_bar": 10.0,
                 "druck_soll_bar": 7.0, "druck_foerderstrom_m3h": 180.0,
-                "druck_verbrauch_m3h": 90.0, "druck_zeitkonstante_s": 4.0,
-            })
-        elif category == "Dampf":
-            config.update({
-                "druck_volumen_m3": 5.0, "druck_max_bar": 16.0,
-                "druck_soll_bar": 10.0, "druck_foerderstrom_m3h": 300.0,
-                "druck_verbrauch_m3h": 180.0, "druck_zeitkonstante_s": 8.0,
+                "druck_verbrauch_m3h": 90.0, "druck_zeitkonstante_s": 12.0,
             })
         else:
             config.update({
-                "druck_volumen_m3": 1.0, "druck_max_bar": 10.0,
-                "druck_soll_bar": 5.0, "druck_foerderstrom_m3h": 80.0,
-                "druck_verbrauch_m3h": 35.0, "druck_zeitkonstante_s": 3.0,
+                "druck_volumen_m3": 1.0, "druck_max_bar": 8.0,
+                "druck_soll_bar": 4.0, "druck_foerderstrom_m3h": 30.0,
+                "druck_verbrauch_m3h": 10.0, "druck_zeitkonstante_s": 8.0,
             })
     elif model == "Durchflussregelung":
-        if category in {"RLT / Lüftung", "Raumautomation"}:
+        if category == "RLT / Lüftung":
             config.update({
-                "flow_max_m3h": 10000.0, "flow_soll_m3h": 6000.0,
-                "flow_rohrlaenge_m": 30.0, "flow_durchmesser_mm": 500.0,
-                "flow_ventilzeit_s": 1.5, "flow_druckverlust_bar": 0.004,
-            })
-        elif category in {"Dosierung / Chemie", "Abwasser"} and "Dosier" in variant_name:
-            config.update({
-                "flow_max_m3h": 0.1, "flow_soll_m3h": 0.05,
-                "flow_rohrlaenge_m": 5.0, "flow_durchmesser_mm": 10.0,
-                "flow_ventilzeit_s": 0.5, "flow_druckverlust_bar": 2.0,
+                "flow_max_m3h": 5000.0, "flow_soll_m3h": 3000.0,
+                "flow_rohrlaenge_m": 30.0, "flow_durchmesser_mm": 600.0,
+                "flow_ventilzeit_s": 12.0, "flow_druckverlust_bar": 0.004,
             })
         else:
             config.update({
-                "flow_max_m3h": 100.0, "flow_soll_m3h": 60.0,
-                "flow_rohrlaenge_m": 25.0, "flow_durchmesser_mm": 80.0,
-                "flow_ventilzeit_s": 1.0, "flow_druckverlust_bar": 1.5,
+                "flow_max_m3h": 30.0, "flow_soll_m3h": 18.0,
+                "flow_rohrlaenge_m": 20.0, "flow_durchmesser_mm": 100.0,
+                "flow_ventilzeit_s": 4.0, "flow_druckverlust_bar": 0.5,
             })
-    elif model == "Füllstandsregelung":
-        config.update({
-            "tank_volumen_m3": 5.0 if category != "Dampf" else 2.0,
-            "tank_hoehe_m": 2.5, "tank_zulauf_m3h": 12.0,
-            "tank_abfluss_m3h": 6.0, "tank_soll_m": 1.5,
-        })
     elif model == "Drehzahlregelung":
         config.update({
             "motor_leistung_kw": 7.5, "motor_nenndrehzahl_rpm": 1500.0,
-            "motor_soll_rpm": 1200.0, "motor_hochlaufzeit_s": 4.0,
+            "motor_soll_rpm": 1200.0, "motor_hochlaufzeit_s": 2.0,
             "motor_spannung_v": 400.0, "motor_wirkungsgrad": 0.9,
             "motor_traegheit_kgm2": 0.25, "motor_lastmoment_nm": 30.0,
         })
     elif model == "Position / Mechanik":
         config.update({
             "pos_masse_kg": 40.0, "pos_feder_n_m": 1500.0,
-            "pos_daempfung_ns_m": 220.0, "pos_stellkraft_n": 2000.0,
+            "pos_daempfung_ns_m": 500.0, "pos_stellkraft_n": 2000.0,
             "pos_hub_mm": 500.0, "pos_soll_mm": 250.0,
-        })
-
-    if profile["model"] == "Generische Prozessstrecke":
-        generic_defaults = {
-            "CO₂": (1000.0, "ppm", 300.0),
-            "pH": (7.0, "pH", 120.0),
-            "Sauerstoff": (2.0, "mg/l", 300.0),
-            "Feuchte": (50.0, "% r. F.", 300.0),
-            "Leitfähigkeit": (500.0, "µS/cm", 300.0),
-            "Konzentration": (50.0, "%", 300.0),
-            "Ladezustand": (80.0, "%", 3600.0),
-            "Leistung": (100.0, "kW", 300.0),
-            "Netzleistung": (50.0, "kW", 300.0),
-            "Taupunkt": (-20.0, "°C", 600.0),
-            "Dampftemperatur": (180.0, "°C", 300.0),
-            "Differenzdruck": (250.0, "Pa", 60.0),
-            "Drehmoment": (50.0, "Nm", 30.0),
-            "Kraft": (1000.0, "N", 30.0),
-            "Mischungsverhältnis": (1.0, "Verhältnis", 60.0),
-            "Gesamtleistung": (250.0, "kW", 300.0),
-            "Überhitzung": (6.0, "K", 60.0),
-        }
-        setpoint, unit, t_end = 1.0, "Prozesseinheit", 60.0
-        for token, values in generic_defaults.items():
-            if token in controlled:
-                setpoint, unit, t_end = values
-                break
-        config.update({
-            "generic_setpoint": setpoint,
-            "generic_unit": unit,
-            "generic_t_end": t_end,
-            "generic_ts": max(t_end / 6.0, 0.1),
-            "generic_ks": max(abs(setpoint) / 50.0, 0.001),
-            "stellgroesse_min": -100.0 if setpoint < 0 else 0.0,
-            "stellgroesse_max": 100.0,
         })
 
     widget_values = {
@@ -3725,7 +3643,11 @@ def render_real_process_inputs(config: dict):
             ),
             key="wirkplan_temp_medium",
         )
-        number("temp_volumen_m3", "Volumen [m³]", 0.001, 0.1, fmt="%.3f")
+        volume_label = (
+            "thermisch wirksames Luftvolumen [m³] (Ersatzwert)"
+            if config.get("anlagenart") == "RLT / Lüftung" else "Volumen [m³]"
+        )
+        number("temp_volumen_m3", volume_label, 0.001, 0.1, fmt="%.3f")
         number("temp_heizleistung_kw", "Heizleistung [kW]", 0.001, 0.5, fmt="%.3f")
         number("temp_umgebung_c", "Umgebungstemperatur [°C]", -100.0, 1.0)
         number("temp_soll_c", "Solltemperatur [°C]", -100.0, 1.0)
@@ -3814,25 +3736,22 @@ def render_real_process_inputs(config: dict):
             )
 
     elif prozessart == "Druckregelung":
-        number("druck_volumen_m3", "Speichervolumen [m³]", 0.001, 0.1, fmt="%.3f")
         number("druck_max_bar", "Maximaldruck [bar]", 0.01, 0.5)
         number("druck_soll_bar", "Solldruck [bar]", 0.0, 0.1)
-        number("druck_foerderstrom_m3h", "maximaler Förderstrom [m³/h]", 0.001, 1.0)
+        number("druck_zeitkonstante_s", "gemessene Anlagenzeitkonstante [s]", 0.05, 0.1,
+               "Bestimmt die PT1-Dynamik. Aus Volumen und Förderstrom allein ist der Druckverlauf nicht ableitbar.")
         if tiefe in ["Erweitert", "Experte"]:
+            st.caption("Diese Kapazitätsdaten prüfen die Erreichbarkeit, nicht die PT1-Zeitkonstante.")
+            number("druck_volumen_m3", "Speichervolumen [m³] (Kennwert)", 0.001, 0.1, fmt="%.3f")
+            number("druck_foerderstrom_m3h", "maximaler Förderstrom [m³/h]", 0.001, 1.0)
             number("druck_verbrauch_m3h", "Grundverbrauch [m³/h]", 0.0, 1.0)
-        if tiefe == "Experte":
-            number("druck_zeitkonstante_s", "minimale Anlagenzeitkonstante [s]", 0.05, 0.1)
 
     elif prozessart == "Durchflussregelung":
         number("flow_max_m3h", "maximaler Durchfluss [m³/h]", 0.001, 1.0)
         number("flow_soll_m3h", "Solldurchfluss [m³/h]", 0.0, 1.0)
         number("flow_ventilzeit_s", "Ventil-Stellzeit [s]", 0.01, 0.1)
         if tiefe in ["Erweitert", "Experte"]:
-            number("flow_rohrlaenge_m", "Rohrlänge [m]", 0.0, 1.0)
-            number("flow_durchmesser_mm", "Rohr-Innendurchmesser [mm]", 1.0, 5.0)
-        if tiefe == "Experte":
-            number("flow_druckverlust_bar", "Druckverlust bei Nennfluss [bar] (Kennwert)", 0.0, 0.1)
-            st.caption("Der Druckverlust wird angezeigt, ändert aber ohne Pumpenkennlinie nicht die simulierte Strecke.")
+            st.caption("Rohrgeometrie und Druckverlust sind nur Anlagenkennwerte. Ohne Pumpen- und Ventilkennlinie bestimmen sie die dynamische Durchflussantwort nicht.")
 
     elif prozessart == "Position / Mechanik":
         number("pos_masse_kg", "bewegte Masse [kg]", 0.001, 1.0)
@@ -3868,7 +3787,9 @@ def render_wirkplan_builder():
     clear_pending_parameter_widgets()
     if st.session_state.pop("clear_wirkplan_widgets_pending", False):
         for key in list(st.session_state.keys()):
-            if key.startswith("wirkplan_") and key != "wirkplan_config":
+            if key.startswith("wirkplan_") and key not in {
+                "wirkplan_config", "wirkplan_last_variant", "wirkplan_last_actuator"
+            }:
                 del st.session_state[key]
     st.title("Physikalischer Wirkplan-Builder")
 
@@ -3882,11 +3803,9 @@ def render_wirkplan_builder():
     if pending_start:
         # Eventuell vorhandene Widgetwerte dürfen die Auswahl aus dem
         # Startformular nicht wieder überschreiben.
-        for key in [
-            "wirkplan_anlagenart", "wirkplan_regelungsvariante",
-            "wirkplan_stellglied_typ", "wirkplan_regelstrategie",
-        ]:
-            st.session_state.pop(key, None)
+        for key in list(st.session_state.keys()):
+            if key.startswith("wirkplan_") and key != "wirkplan_config":
+                st.session_state.pop(key, None)
         config.update(pending_start)
         config = apply_practical_variant_defaults(config)
         st.session_state.wirkplan_config = config
@@ -3949,14 +3868,8 @@ def render_wirkplan_builder():
 
         profile = variants[config["regelungsvariante"]]
         actuator_options = profile["actuators"]
-        old_actuator = config.get("stellglied_typ")
-        if old_actuator not in actuator_options:
-            old_actuator = actuator_options[0]
-        config["stellglied_typ"] = st.selectbox(
-            "3. Stellglied / Antrieb", actuator_options,
-            index=actuator_options.index(old_actuator), key="wirkplan_stellglied_typ",
-            help="Wählt das physikalische Stellglied, das das Reglerausgangssignal in den Prozess einbringt.",
-        )
+        config["stellglied_typ"] = actuator_options[0]
+        st.caption(f"3. Passendes Stellglied / Antrieb: **{config['stellglied_typ']}**")
 
         strategy_options = profile["strategies"]
         old_strategy = config.get("regelstrategie")
@@ -3976,6 +3889,7 @@ def render_wirkplan_builder():
             config = apply_practical_variant_defaults(config)
             st.session_state["wirkplan_last_variant"] = config["regelungsvariante"]
             st.session_state.wirkplan_config = config
+            st.session_state.clear_wirkplan_widgets_pending = True
             st.rerun()
 
         config["prozessart"] = profile["model"]
@@ -4027,13 +3941,14 @@ def render_wirkplan_builder():
             config = render_real_process_inputs(config)
 
         with st.expander("3. Verhalten des Prozesses", expanded=False):
-            st.caption("Totzeit und maximale Stellrate werden dokumentiert, im aktuellen PT1/PT2-Simulator aber nicht nachgebildet. Die Stellgrenzen wirken in der Simulation.")
-            config["traegheit"] = st.selectbox(
-                "Wie träge ist der Prozess?",
-                ["schnell", "mittel", "träge", "sehr träge"],
-                index=["schnell", "mittel", "träge", "sehr träge"].index(config["traegheit"]),
-                key="wirkplan_traegheit"
-            )
+            st.caption("Die Stellgrenzen wirken in der Simulation. Totzeit und Stellrate werden ohne eigenes Modell nicht als einstellbare Simulationsparameter angeboten.")
+            if not config["reale_daten_aktiv"]:
+                config["traegheit"] = st.selectbox(
+                    "Wie träge ist der Prozess?",
+                    ["schnell", "mittel", "träge", "sehr träge"],
+                    index=["schnell", "mittel", "träge", "sehr träge"].index(config["traegheit"]),
+                    key="wirkplan_traegheit"
+                )
 
             config["ueberschwingen_zulaessig"] = st.selectbox(
                 "Ist Überschwingen zulässig?",
@@ -4049,10 +3964,6 @@ def render_wirkplan_builder():
                 key="wirkplan_abweichung"
             )
 
-            config["totzeit_s"] = st.number_input(
-                "Totzeit [s]", min_value=0.0, value=float(config["totzeit_s"]),
-                step=0.1, key="wirkplan_totzeit_s"
-            )
             limit_left, limit_right = st.columns(2)
             with limit_left:
                 config["stellgroesse_min"] = st.number_input(
@@ -4064,33 +3975,9 @@ def render_wirkplan_builder():
                     "Stellgröße max.", value=float(config["stellgroesse_max"]),
                     step=1.0, key="wirkplan_stellgroesse_max"
                 )
-            config["stellrate_max"] = st.number_input(
-                "Maximale Stellrate [Einheit/s]", min_value=0.001,
-                value=float(config["stellrate_max"]), step=1.0, key="wirkplan_stellrate_max"
-            )
 
         with st.expander("4. Messkette", expanded=False):
-            st.caption("Messbereich, Sensorträgheit und Rauschen sind Angaben für den Wirkplan. Der Simulator verwendet derzeit eine ideale Rückführung ohne diese Effekte.")
-            mess_left, mess_right = st.columns(2)
-            with mess_left:
-                config["messbereich_min"] = st.number_input(
-                    "Messbereich min.", value=float(config["messbereich_min"]),
-                    step=1.0, key="wirkplan_messbereich_min"
-                )
-                config["sensor_zeitkonstante_s"] = st.number_input(
-                    "Sensor-Zeitkonstante [s]", min_value=0.0,
-                    value=float(config["sensor_zeitkonstante_s"]), step=0.1,
-                    key="wirkplan_sensor_zeitkonstante_s"
-                )
-            with mess_right:
-                config["messbereich_max"] = st.number_input(
-                    "Messbereich max.", value=float(config["messbereich_max"]),
-                    step=1.0, key="wirkplan_messbereich_max"
-                )
-                config["messrauschen"] = st.number_input(
-                    "Messrauschen (±)", min_value=0.0, value=float(config["messrauschen"]),
-                    step=0.01, key="wirkplan_messrauschen"
-                )
+            st.caption("Sensor und Messumformer sind im Wirkplan sichtbar. Die Simulation verwendet eine ideale Rückführung; Messbereich, Sensorträgheit und Rauschen werden deshalb nicht als wirksame Eingaben angeboten.")
 
         with st.expander("5. Störeinflüsse", expanded=False):
             config["stoerungen_relevant"] = st.selectbox(
@@ -4292,6 +4179,8 @@ st.caption(
     "Interaktive Simulation eines geschlossenen Regelkreises mit Regler, "
     "Strecke, Rückführung und optionaler Störung."
 )
+if st.session_state.defaults.get("model_note"):
+    st.info(st.session_state.defaults["model_note"])
 
 
 # ------------------------------------------------------------
@@ -4550,25 +4439,29 @@ if dt >= t_end / 20:
 # Simulation ausführen
 # ------------------------------------------------------------
 
-df = simulate_control_loop(
-    controller_type=controller_type,
-    plant_type=plant_type,
-    kp=kp,
-    ki=ki,
-    kd=kd,
-    ks=ks,
-    ts=ts,
-    zeta=zeta,
-    omega0=omega0,
-    setpoint=setpoint,
-    t_end=t_end,
-    dt=dt,
-    disturbance_position=disturbance_position,
-    disturbance_time=disturbance_time,
-    disturbance_value=disturbance_value,
-    u_min=defaults.get("u_min"),
-    u_max=defaults.get("u_max"),
-)
+try:
+    df = simulate_control_loop(
+        controller_type=controller_type,
+        plant_type=plant_type,
+        kp=kp,
+        ki=ki,
+        kd=kd,
+        ks=ks,
+        ts=ts,
+        zeta=zeta,
+        omega0=omega0,
+        setpoint=setpoint,
+        t_end=t_end,
+        dt=dt,
+        disturbance_position=disturbance_position,
+        disturbance_time=disturbance_time,
+        disturbance_value=disturbance_value,
+        u_min=defaults.get("u_min"),
+        u_max=defaults.get("u_max"),
+    )
+except ValueError as exc:
+    st.error(str(exc))
+    st.stop()
 
 
 # ------------------------------------------------------------
