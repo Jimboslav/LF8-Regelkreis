@@ -1,11 +1,4 @@
 import streamlit as st
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-from streamlit_flow import streamlit_flow
-from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
-from streamlit_flow.state import StreamlitFlowState
 
 
 def _praxis_variant(
@@ -528,6 +521,16 @@ if not st.session_state.app_started:
         st.rerun()
 
     st.stop()
+
+# Das Startformular benötigt weder numerische Bibliotheken noch den
+# Flow-Editor. Diese Pakete erst für die jeweilige Arbeitsansicht laden.
+import numpy as np
+import pandas as pd
+
+if st.session_state.active_view in ("builder", "wirkplan"):
+    from streamlit_flow import streamlit_flow
+    from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
+    from streamlit_flow.state import StreamlitFlowState
 
 
 # ------------------------------------------------------------
@@ -4659,6 +4662,8 @@ st.graphviz_chart(
 # ------------------------------------------------------------
 
 st.subheader("Zeitverlauf")
+
+import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots(figsize=(10, 4.8))
 
